@@ -50,6 +50,18 @@ BLACK_PIECES = {BLACK_PAWN, BLACK_KNIGHT, BLACK_BISHOP, BLACK_QUEEN, BLACK_KING}
 
 BOARD_SIZE = 6
 
+PIECE_VALUES = {
+    WHITE_PAWN:   100,
+    WHITE_KNIGHT: 300,
+    WHITE_BISHOP: 320,
+    WHITE_QUEEN:  900,
+    WHITE_KING:  20000,
+    BLACK_PAWN:  -100,
+    BLACK_KNIGHT:-300,
+    BLACK_BISHOP:-320,
+    BLACK_QUEEN: -900,
+    BLACK_KING: -20000,
+}
 # Column index → letter
 COL_TO_FILE = {0: 'A', 1: 'B', 2: 'C', 3: 'D', 4: 'E', 5: 'F'}
 FILE_TO_COL = {v: k for k, v in COL_TO_FILE.items()}
@@ -148,18 +160,6 @@ def get_all_moves(board: np.ndarray, playing_white: bool):
 # Board evaluation heuristic  (TODO: tune weights / add positional tables)
 # ---------------------------------------------------------------------------
 
-PIECE_VALUES = {
-    WHITE_PAWN:   100,
-    WHITE_KNIGHT: 300,
-    WHITE_BISHOP: 320,
-    WHITE_QUEEN:  900,
-    WHITE_KING:  20000,
-    BLACK_PAWN:  -100,
-    BLACK_KNIGHT:-300,
-    BLACK_BISHOP:-320,
-    BLACK_QUEEN: -900,
-    BLACK_KING: -20000,
-}
 
 
 def evaluate(board: np.ndarray) -> float:
@@ -178,8 +178,7 @@ def evaluate(board: np.ndarray) -> float:
     return score
 
 # ---------------------------------------------------------------------------
-# Search  (Minimax with Alpha-Beta pruning)
-# TODO: Add move ordering, quiescence search, iterative deepening, transposition table
+
 # ---------------------------------------------------------------------------
 
 def apply_move(board: np.ndarray, piece, src_row, src_col, dst_row, dst_col) -> np.ndarray:
@@ -189,36 +188,6 @@ def apply_move(board: np.ndarray, piece, src_row, src_col, dst_row, dst_col) -> 
     return new_board
 
 
-def minimax(board: np.ndarray, depth: int, alpha: float, beta: float,
-            maximising: bool) -> float:
-    if depth == 0:
-        return evaluate(board)
-
-    moves = get_all_moves(board, playing_white=maximising)
-    if not moves:
-        # No moves available — treat as loss for the side to move
-        return -99999 if maximising else 99999
-
-    if maximising:
-        best = -float('inf')
-        for piece, sr, sc, dr, dc in moves:
-            child = apply_move(board, piece, sr, sc, dr, dc)
-            val = minimax(child, depth - 1, alpha, beta, False)
-            best = max(best, val)
-            alpha = max(alpha, best)
-            if beta <= alpha:
-                break   # Beta cut-off
-        return best
-    else:
-        best = float('inf')
-        for piece, sr, sc, dr, dc in moves:
-            child = apply_move(board, piece, sr, sc, dr, dc)
-            val = minimax(child, depth - 1, alpha, beta, True)
-            best = min(best, val)
-            beta = min(beta, best)
-            if beta <= alpha:
-                break   # Alpha cut-off
-        return best
 
 # ---------------------------------------------------------------------------
 # Format move string
@@ -235,8 +204,8 @@ def format_move(piece: int, src_row: int, src_col: int,
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def get_best_move(board: np.ndarray, playing_white: bool = True,
-                  depth: int = 3) -> Optional[str]:
+def get_best_move(board: np.ndarray, playing_white: bool = True
+                  ) -> Optional[str]:
     """
     Given the current board state, return the best move string.
 
@@ -244,36 +213,15 @@ def get_best_move(board: np.ndarray, playing_white: bool = True,
     ----------
     board        : 6×6 NumPy array representing the current game state.
     playing_white: True if the engine is playing as White, False for Black.
-    depth        : Search depth for minimax (increase for stronger play,
-                   decrease for faster response).
+   
 
     Returns
     -------
     Move string in the format '<piece_id>:<src_cell>-><dst_cell>', or
     None if no legal moves are available.
     """
-    moves = get_all_moves(board, playing_white)
-    if not moves:
-        return None
-
     best_move = None
-    best_val  = -float('inf') if playing_white else float('inf')
-
-    for piece, sr, sc, dr, dc in moves:
-        child = apply_move(board, piece, sr, sc, dr, dc)
-        val   = minimax(child, depth - 1, -float('inf'), float('inf'),
-                        not playing_white)
-
-        if playing_white and val > best_val:
-            best_val  = val
-            best_move = (piece, sr, sc, dr, dc)
-        elif not playing_white and val < best_val:
-            best_val  = val
-            best_move = (piece, sr, sc, dr, dc)
-
-    if best_move is None:
-        # Fallback: play first legal move
-        best_move = moves[0]
+    #implementation of get_best_move 
 
     return format_move(*best_move)
 
@@ -295,5 +243,5 @@ if __name__ == "__main__":
     ], dtype=int)
 
     print("Board:\n", initial_board)
-    move = get_best_move(initial_board, playing_white=True, depth=3)
+    move = get_best_move(initial_board, playing_white=True)
     print("Best move for White:", move)
