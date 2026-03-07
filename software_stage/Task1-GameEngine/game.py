@@ -234,12 +234,12 @@ if __name__ == "__main__":
     # Example: standard-ish starting position on a 6x6 board
     # White pieces on rows 4-5, Black pieces on rows 0-1
     initial_board = np.array([
-        [ 7,  8,  9, 10,  8,  7],   # Row 1 (A1–F1) — Black back rank
-        [ 6,  6,  6,  6,  6,  6],   # Row 2         — Black pawns
+        [ 2,  3,  4,  5,  3,  2],   # Row 1 (A1–F1) — White back rank
+        [ 1,  1,  1,  1,  1,  1],   # Row 2         — White pawns
         [ 0,  0,  0,  0,  0,  0],   # Row 3
         [ 0,  0,  0,  0,  0,  0],   # Row 4
-        [ 1,  1,  1,  1,  1,  1],   # Row 5         — White pawns
-        [ 2,  3,  4,  5,  3,  2],   # Row 6 (A6–F6) — White back rank
+        [ 6,  6,  6,  6,  6,  6],   # Row 5         — Black pawns
+        [ 7,  8,  9, 10,  8,  7],   # Row 6 (A6–F6) — Black back rank
     ], dtype=int)
 
     print("Board:\n", initial_board)
