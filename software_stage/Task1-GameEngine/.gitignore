@@ -1,0 +1,36 @@
+# Compiled binaries
+*.o
+chess6x6
+chess6x6_debug
+chess6x6_perf
+chess6x6_prof
+egtb_gen
+selfplay
+datagen
+tuner
+models/*
+
+# Tuning artifacts (large / generated)
+data/
+tuning_data.txt
+tuner_output.txt
+*.log
+verify_correlation
+
+# Profiling artifacts
+gmon.out
+perf.data
+perf.data.old
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Duplicate EGTB at root (canonical copy is Models/egtb/)
+/egtb/
+
+# OS junk
+.DS_Store
+Thumbs.db
+*.egtb
