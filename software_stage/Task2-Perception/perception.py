@@ -34,7 +34,7 @@ class RoboGambit_Perception:
         # ARUCO DETECTOR
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         self.aruco_params = cv2.aruco.DetectorParameters()
-        self.detector = cv2.aruco.ArucoDetector(self.aruco_dict,self.aruco_params)
+        self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
 
         print("Perception Initialized")
 
@@ -45,12 +45,11 @@ class RoboGambit_Perception:
         DO NOT MODIFY.
         Performs camera undistortion and grayscale conversion.
         """
-        undistorted_image = cv2.undistort(image,self.camera_matrix,self.dist_coeffs,None,self.camera_matrix)
-        gray_image = cv2.cvtColor(undistorted_image,cv2.COLOR_BGR2GRAY)
+        undistorted_image = cv2.undistort(image, self.camera_matrix, self.dist_coeffs, None, self.camera_matrix)
+        gray_image = cv2.cvtColor(undistorted_image, cv2.COLOR_BGR2GRAY)
         return undistorted_image, gray_image
 
 
-    # TODO: IMPLEMENT PIXEL → WORLD TRANSFORMATION
     def pixel_to_world(self, pixel_x, pixel_y):
         """
         Convert pixel coordinates into world coordinates using homography.
@@ -59,79 +58,156 @@ class RoboGambit_Perception:
         2. Format pixel point for cv2.perspectiveTransform().
         3. Return transformed world coordinates.
         """
+        if self.H_matrix is None:
+            print("Homography matrix not computed yet.")
+            return None, None
 
-        # Write your code here
+        # Format the pixel point as required by perspectiveTransform: shape (1, 1, 2)
+        pixel_point = np.array([[[float(pixel_x), float(pixel_y)]]], dtype=np.float32)
 
-        return None, None
+        # Apply homography to transform pixel -> world
+        world_point = cv2.perspectiveTransform(pixel_point, self.H_matrix)
+
+        world_x = world_point[0][0][0]
+        world_y = world_point[0][0][1]
+
+        return world_x, world_y
 
 
-    # PARTICIPANTS MODIFY THIS FUNCTION
     def process_image(self, image):
         """
         Main perception pipeline.
-        Participants must implement:
-        - ArUco detection
-        - Homography computation
-        - Pixel → world conversion
-        - Board reconstruction
         """
 
         self.board[:] = 0
 
+        # Reset internal state for fresh processing
+        self.corner_pixels = {}
+        self.pixel_matrix = []
+        self.world_matrix = []
+        self.H_matrix = None
+
         # Preprocess image (Do not modify)
         undistorted_image, gray_image = self.prepare_image(image)
 
-        # TODO: Detect ArUco markers (uncomment or write your own code)
+        # ── 1. Detect ArUco markers ──────────────────────────────────────────
+        corners, ids, rejected = self.detector.detectMarkers(gray_image)
+        if ids is not None:
+            cv2.aruco.drawDetectedMarkers(undistorted_image, corners, ids)
+        else:
+            print("No ArUco markers detected.")
+            res = cv2.resize(undistorted_image, (1152, 648))
+            cv2.imshow("Detected Markers", res)
+            self.visualize_board()
+            return
 
-        # corners, ids, rejected = self.detector.detectMarkers(gray_image)
-        # if ids is not None:
-        #     cv2.aruco.drawDetectedMarkers(undistorted_image,corners,ids)
+        # ── 2. Separate corner markers (21-24) and piece markers (1-10) ──────
+        CORNER_IDS = {21, 22, 23, 24}
+        PIECE_IDS  = set(range(1, 11))
 
+        piece_markers = []  # piece_id -> (center_px, center_py)
 
-        # TODO: Extract corner marker pixels
+        for i, marker_id in enumerate(ids.flatten()):
+            # Compute the centre of the detected marker from its 4 corner pixels
+            marker_corners = corners[i][0]  # shape (4, 2)
+            cx = float(np.mean(marker_corners[:, 0]))
+            cy = float(np.mean(marker_corners[:, 1]))
 
-        # Identify markers with IDs 21–24
-        # Store their pixel centers
+            if marker_id in CORNER_IDS:
+                self.corner_pixels[marker_id] = (cx, cy)
+            elif marker_id in PIECE_IDS:
+                piece_markers.append((marker_id, cx, cy))
 
-        # TODO: Build pixel and world matrices
+        # ── 3. Build pixel and world matrices ────────────────────────────────
+        found_corners = [mid for mid in CORNER_IDS if mid in self.corner_pixels]
+        print(f"Found corner markers: {found_corners}")
 
-        # Use detected corner markers and
-        # known world coordinates
+        if len(found_corners) < 4:
+            print(f"Warning: only {len(found_corners)}/4 corner markers detected.")
+            if len(found_corners) < 3:
+                print("Not enough corner markers to compute homography.")
+                res = cv2.resize(undistorted_image, (1152, 648))
+                cv2.imshow("Detected Markers", res)
+                self.visualize_board()
+                return
 
-        # TODO: Compute homography matrix
+        self.pixel_matrix = []
+        self.world_matrix = []
 
-        # Use:
-        # cv2.findHomography()
+        for mid in found_corners:
+            px, py = self.corner_pixels[mid]
+            wx, wy = self.corner_world[mid]
+            self.pixel_matrix.append([px, py])
+            self.world_matrix.append([wx, wy])
 
-        # TODO: Convert piece markers to world coordinates
+        pixel_pts = np.array(self.pixel_matrix, dtype=np.float32)
+        world_pts = np.array(self.world_matrix, dtype=np.float32)
 
-        # For each marker with ID 1–10:
-        # 1. Compute center pixel
-        # 2. Convert to world using pixel_to_world()
-        # 3. Call place_piece_on_board()
+        # ── 4. Compute homography (pixel space -> world space) ────────────────
+        self.H_matrix, mask = cv2.findHomography(pixel_pts, world_pts, cv2.RANSAC, 5.0)
+
+        if self.H_matrix is None:
+            print("Homography computation failed.")
+            res = cv2.resize(undistorted_image, (1152, 648))
+            cv2.imshow("Detected Markers", res)
+            self.visualize_board()
+            return
+
+        print(f"Homography computed successfully.")
+
+        # ── 5. Convert piece marker centres to world coords & place on board ──
+        for piece_id, px, py in piece_markers:
+            wx, wy = self.pixel_to_world(px, py)
+            if wx is None:
+                continue
+            print(f"Piece {piece_id}: pixel ({px:.1f}, {py:.1f}) -> world ({wx:.1f}, {wy:.1f})")
+            self.place_piece_on_board(piece_id, wx, wy)
+
+        print("Board state:")
+        print(self.board)
 
         # Visualization (Do not modify)
-        res = cv2.resize(undistorted_image, (1152,648))
+        res = cv2.resize(undistorted_image, (1152, 648))
         cv2.imshow("Detected Markers", res)
         self.visualize_board()
 
 
-    # TODO: IMPLEMENT BOARD PLACEMENT
     def place_piece_on_board(self, piece_id, x_coord, y_coord):
-
         """
         Places detected piece on the closest board square.
 
         Board definition:
+            6x6 grid
+            top-left corner = (300, 300) in world coords (mm)
+            square size     = 100 mm
 
-        6x6 grid
-        top-left corner = (300,300)
-        square size = 100mm
+        World coordinate system (matches corner_world assignments):
+            +X → right
+            +Y → up  (row 0 is at the highest Y value)
+
+        Square centres (col c, row r):
+            world_x_centre = 300 - 50 - c*100  =  250 - c*100
+            world_y_centre = 300 - 50 - r*100  =  250 - r*100
+
+        Inverting:
+            c = (250 - x_coord) / 100
+            r = (250 - y_coord) / 100
         """
 
-        # Write your code here
+        SQUARE_SIZE = 100.0  # mm
 
-        pass
+        col = (250.0 - x_coord) / SQUARE_SIZE
+        row = (250.0 - y_coord) / SQUARE_SIZE
+
+        col_idx = int(round(col))
+        row_idx = int(round(row))
+
+        # Clamp to valid board indices [0, 5]
+        col_idx = max(0, min(5, col_idx))
+        row_idx = max(0, min(5, row_idx))
+
+        self.board[row_idx][col_idx] = piece_id
+        print(f"  -> Placed piece {piece_id} at board[{row_idx}][{col_idx}]")
 
 
     # DO NOT MODIFY THIS FUNCTION
@@ -140,19 +216,20 @@ class RoboGambit_Perception:
         Draw a simple 6x6 board with detected piece IDs
         """
         cell_size = 80
-        board_img = np.ones((6*cell_size,6*cell_size,3),dtype=np.uint8) * 255
+        board_img = np.ones((6 * cell_size, 6 * cell_size, 3), dtype=np.uint8) * 255
 
         for r in range(6):
             for c in range(6):
-                x1 = c*cell_size
-                y1 = r*cell_size
-                x2 = x1+cell_size
-                y2 = y1+cell_size
-                cv2.rectangle(board_img,(x1,y1),(x2,y2),(0,0,0),2)
+                x1 = c * cell_size
+                y1 = r * cell_size
+                x2 = x1 + cell_size
+                y2 = y1 + cell_size
+                cv2.rectangle(board_img, (x1, y1), (x2, y2), (0, 0, 0), 2)
 
                 piece = int(self.board[r][c])
                 if piece != 0:
-                    cv2.putText(board_img,str(piece),(x1+25,y1+50),cv2.FONT_HERSHEY_SIMPLEX,1,(0,0,255),2)
+                    cv2.putText(board_img, str(piece), (x1 + 25, y1 + 50),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
         cv2.imshow("Game Board", board_img)
 
